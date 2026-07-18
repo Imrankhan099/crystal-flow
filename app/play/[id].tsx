@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { GameBoard } from '@/components/GameBoard';
@@ -33,12 +33,29 @@ export default function PlayScreen() {
         stats: { ...p.stats, puzzlesSolved: p.stats.puzzlesSolved + 1, perfectSolves: p.stats.perfectSolves + (stars === 3 ? 1 : 0), totalStars: p.stats.totalStars + stars },
       }, xp);
     });
-    setTimeout(() => router.back(), 1500);
-  }, [levelId, isDaily, update, router]);
+  }, [levelId, isDaily, update]);
+
+  const handleNext = useCallback(() => {
+    router.replace(`/play/${levelId + 1}`);
+  }, [router, levelId]);
+
+  const handleHome = useCallback(() => {
+    router.replace('/(tabs)/');
+  }, [router]);
 
   return (
     <View style={styles.container}>
-      <GameBoard level={level} onComplete={handleComplete} onExit={() => router.back()} isTutorial={isTutorial} tutorialDone={player.tutorialDone} onTutorialStep={() => {}} />
+      <GameBoard
+        key={levelId}
+        level={level}
+        onComplete={handleComplete}
+        onExit={() => router.back()}
+        onNext={handleNext}
+        onHome={handleHome}
+        isTutorial={isTutorial}
+        tutorialDone={player.tutorialDone}
+        onTutorialStep={() => {}}
+      />
     </View>
   );
 }

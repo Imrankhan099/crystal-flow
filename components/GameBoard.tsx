@@ -5,10 +5,11 @@ import * as Haptics from 'expo-haptics';
 import { Crystal } from './Crystal';
 import { GlassCard } from './GlassCard';
 import { Button } from './Button';
-import { Colors, Radius, Typography, Spacing } from '../lib/theme';
+import { Colors, Radius, Typography, Spacing, Gradients } from '../lib/theme';
 import { cellEq, key, manhattan, solvePath } from '../lib/engine';
 import type { Cell, Crystal as CrystalT, Level } from '../lib/types';
-import { Undo2, RotateCcw, Lightbulb, Pause } from 'lucide-react-native';
+import { Undo2, RotateCcw, Lightbulb, Pause, Home, RefreshCw, ArrowRight, Sparkles } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -16,6 +17,8 @@ interface Props {
   level: Level;
   onComplete: (pathLen: number, stars: number) => void;
   onExit: () => void;
+  onNext?: () => void;
+  onHome?: () => void;
   isTutorial?: boolean;
   tutorialDone?: boolean;
   onTutorialStep?: (step: number) => void;
@@ -30,7 +33,7 @@ const TUTORIAL_STEPS = [
   'Lines cannot cross.',
 ];
 
-export function GameBoard({ level, onComplete, onExit, isTutorial, tutorialDone, onTutorialStep }: Props) {
+export function GameBoard({ level, onComplete, onExit, onNext, onHome, isTutorial, tutorialDone, onTutorialStep }: Props) {
   const [layout, setLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [path, setPath] = useState<Cell[]>([]);
   const [particles, setParticles] = useState<Particle[]>([]);
@@ -185,7 +188,7 @@ export function GameBoard({ level, onComplete, onExit, isTutorial, tutorialDone,
             const c = crystalMap.get(key(cell.r, cell.c));
             if (c) { const px = cellToPx(cell); spawnParticles(px.x, px.y, c.color === 'purple' ? Colors.crystalPurple : c.color === 'blue' ? Colors.crystalBlue : Colors.crystalCyan, 12); }
           });
-          setTimeout(() => onComplete(prev.length, stars), 1400);
+          onComplete(prev.length, stars);
         } else if (!allLit) { setErrorMsg('Some crystals remain unlit'); }
         else if (prev.length > level.maxEnergy) { setErrorMsg('Out of energy'); }
         return prev;
@@ -269,7 +272,7 @@ export function GameBoard({ level, onComplete, onExit, isTutorial, tutorialDone,
         </View>
       )}
 
-      {solved && <SolvedOverlay level={level} pathLen={path.length} confetti={confetti} />}
+      {solved && <CompleteModal level={level} pathLen={path.length} moves={moves} confetti={confetti} onNext={onNext} onReplay={restart} onHome={onHome} />}
     </View>
   );
 }
@@ -330,32 +333,136 @@ function TutorialOverlay({ step }: { step: number; onAdvance: (s: number) => voi
   );
 }
 
-function SolvedOverlay({ level, pathLen, confetti }: { level: Level; pathLen: number; confetti: Confetti[] }) {
-  const scale = useSharedValue(0);
+function CompleteModal({ level, pathLen, moves, confetti, onNext, onReplay, onHome }: { level: Level; pathLen: number; moves: number; confetti: Confetti[]; onNext?: () => void; onReplay: () => void; onHome?: () => void; }) {
   const stars = pathLen <= level.par ? 3 : pathLen <= Math.ceil(level.par * 1.2) ? 2 : 1;
-  useEffect(() => { scale.value = withSequence(withTiming(1.15, { duration: 350, easing: Easing.out(Easing.back(2)) }), withTiming(1, { duration: 250 })); }, []);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }], opacity: scale.value }));
+  const coins = 20 + stars * 15;
+  const xp = 30 + stars * 20;
+  const cardScale = useSharedValue(0);
+  const cardOpacity = useSharedValue(0);
+  const glowRotate = useSharedValue(0);
+
+  useEffect(() => {
+    cardOpacity.value = withTiming(1, { duration: 200 });
+    cardScale.value = withSequence(withTiming(1.08, { duration: 400, easing: Easing.out(Easing.back(2)) }), withTiming(1, { duration: 250 }));
+    glowRotate.value = withRepeat(withTiming(360, { duration: 8000, easing: Easing.linear }), -1, false);
+  }, []);
+
+  const cardStyle = useAnimatedStyle(() => ({ transform: [{ scale: cardScale.value }], opacity: cardOpacity.value }));
+  const glowStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${glowRotate.value}deg` }] }));
+
   return (
-    <View style={styles.solvedOverlay} pointerEvents="none">
+    <View style={styles.solvedOverlay}>
       {confetti.map((c) => (
         <View key={c.id} style={{ position: 'absolute', left: c.x, top: c.y, width: 8, height: 12, backgroundColor: c.color, transform: [{ rotate: `${c.rot}deg` }] }} />
       ))}
-      <Animated.View style={style}>
+      <Animated.View style={[styles.glowRing, glowStyle]} pointerEvents="none" />
+      <Animated.View style={cardStyle}>
         <GlassCard style={styles.solvedCard} radius={Radius.xl} glow>
-          <Text style={styles.solvedTitle}>Crystal Flow!</Text>
+          <View style={styles.completeBadge}>
+            <Sparkles size={18} color={Colors.warning[500]} strokeWidth={2.4} />
+            <Text style={styles.completeBadgeText}>LEVEL COMPLETED</Text>
+          </View>
+          <Text style={styles.solvedTitle}>{level.name}</Text>
           <View style={styles.starsRow}>
             {Array.from({ length: 3 }).map((_, i) => (
-              <Text key={i} style={[styles.star, { opacity: i < stars ? 1 : 0.25 }]}>★</Text>
+              <Star key={i} filled={i < stars} delay={300 + i * 180} />
             ))}
           </View>
-          <View style={styles.rewardsRow}>
-            <Text style={styles.reward}>+{20 + stars * 15} 🪙</Text>
-            <Text style={styles.reward}>+{30 + stars * 20} XP</Text>
-            <Text style={styles.reward}>+{stars} ★</Text>
+          <View style={styles.statsGrid}>
+            <StatBox icon="🪙" label="Coins" value={`+${coins}`} delay={700} />
+            <StatBox icon="✨" label="XP" value={`+${xp}`} delay={820} />
+            <StatBox icon="🎯" label="Best Moves" value={`${moves}`} delay={940} />
+          </View>
+          <View style={styles.completeBtns}>
+            <CompleteBtn grad={Gradients.primary} icon={<ArrowRight size={20} color="#fff" strokeWidth={2.6} />} label="Next Level" onPress={onNext} delay={1100} primary />
+            <View style={styles.secondaryBtns}>
+              <CompleteBtnGhost icon={<RefreshCw size={18} color={Colors.purple[500]} strokeWidth={2.4} />} label="Replay" onPress={onReplay} delay={1250} />
+              <CompleteBtnGhost icon={<Home size={18} color={Colors.blue[500]} strokeWidth={2.4} />} label="Home" onPress={onHome} delay={1400} />
+            </View>
           </View>
         </GlassCard>
       </Animated.View>
     </View>
+  );
+}
+
+function Star({ filled, delay }: { filled: boolean; delay: number }) {
+  const scale = useSharedValue(0);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      scale.value = withSequence(withTiming(1.3, { duration: 300, easing: Easing.out(Easing.back(2.5)) }), withTiming(1, { duration: 200 }));
+    }, delay);
+    return () => clearTimeout(t);
+  }, [delay]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View style={style}>
+      <Text style={[styles.star, { opacity: filled ? 1 : 0.22 }]}>★</Text>
+    </Animated.View>
+  );
+}
+
+function StatBox({ icon, label, value, delay }: { icon: string; label: string; value: string; delay: number }) {
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(12);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      opacity.value = withTiming(1, { duration: 300 });
+      translateY.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
+    }, delay);
+    return () => clearTimeout(t);
+  }, [delay]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: translateY.value }] }));
+  return (
+    <Animated.View style={[styles.statBox, style]}>
+      <Text style={styles.statIcon}>{icon}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </Animated.View>
+  );
+}
+
+function CompleteBtn({ grad, icon, label, onPress, delay, primary }: { grad: readonly [string, string, ...string[]]; icon: React.ReactNode; label: string; onPress?: () => void; delay: number; primary?: boolean }) {
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.8);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      opacity.value = withTiming(1, { duration: 250 });
+      scale.value = withSequence(withTiming(1.04, { duration: 250, easing: Easing.out(Easing.back(2)) }), withTiming(1, { duration: 150 }));
+    }, delay);
+    return () => clearTimeout(t);
+  }, [delay]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View style={[style, primary ? styles.nextBtnWrap : null]}>
+      <Pressable onPress={onPress} style={({ pressed }) => [styles.pressed, pressed && { transform: [{ scale: 0.96 }], opacity: 0.9 }]}>
+        <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.nextBtn}>
+          {icon}
+          <Text style={styles.nextBtnText}>{label}</Text>
+        </LinearGradient>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function CompleteBtnGhost({ icon, label, onPress, delay }: { icon: React.ReactNode; label: string; onPress?: () => void; delay: number }) {
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.8);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      opacity.value = withTiming(1, { duration: 250 });
+      scale.value = withSequence(withTiming(1.04, { duration: 250, easing: Easing.out(Easing.back(2)) }), withTiming(1, { duration: 150 }));
+    }, delay);
+    return () => clearTimeout(t);
+  }, [delay]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View style={[style, styles.ghostBtnWrap]}>
+      <Pressable onPress={onPress} style={({ pressed }) => [styles.ghostBtn, pressed && { transform: [{ scale: 0.95 }], opacity: 0.85 }]}>
+        {icon}
+        <Text style={styles.ghostBtnText}>{label}</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -392,11 +499,25 @@ const styles = StyleSheet.create({
   modalCard: { padding: 28, alignItems: 'center', gap: 14, minWidth: 240 },
   modalTitle: { ...Typography.h1, color: Colors.textPrimary },
   modalBtn: { width: 200 },
-  solvedOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,30,60,0.3)', overflow: 'hidden' },
-  solvedCard: { padding: 32, alignItems: 'center' },
-  solvedTitle: { ...Typography.h1, color: Colors.textPrimary },
-  starsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  star: { fontSize: 40, color: Colors.warning[500] },
-  rewardsRow: { flexDirection: 'row', gap: 14, marginTop: 14 },
-  reward: { ...Typography.bodySmall, fontFamily: 'Inter-SemiBold', color: Colors.textSecondary },
+  solvedOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,30,60,0.45)', overflow: 'hidden' },
+  glowRing: { position: 'absolute', width: 340, height: 340, borderRadius: 170, borderWidth: 3, borderColor: Colors.crystalCyan, opacity: 0.25 },
+  solvedCard: { padding: 28, alignItems: 'center', minWidth: 300, maxWidth: 360 },
+  completeBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,169,64,0.12)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.pill, marginBottom: 14 },
+  completeBadgeText: { ...Typography.caption, color: Colors.warning[600], fontFamily: 'Inter-Bold', letterSpacing: 1.2, fontSize: 11 },
+  solvedTitle: { ...Typography.h1, color: Colors.textPrimary, textAlign: 'center' },
+  starsRow: { flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 18 },
+  star: { fontSize: 44, color: Colors.warning[500] },
+  statsGrid: { flexDirection: 'row', gap: 10, width: '100%', justifyContent: 'center' },
+  statBox: { flex: 1, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: Radius.md, paddingVertical: 12, paddingHorizontal: 8, gap: 2 },
+  statIcon: { fontSize: 18 },
+  statValue: { ...Typography.h3, color: Colors.textPrimary, fontFamily: 'Inter-Bold' },
+  statLabel: { ...Typography.caption, color: Colors.textTertiary, fontSize: 10 },
+  completeBtns: { width: '100%', gap: 10, marginTop: 22 },
+  nextBtnWrap: { width: '100%' },
+  nextBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: Radius.lg, minHeight: 56 },
+  nextBtnText: { color: '#fff', fontFamily: 'Inter-Bold', fontSize: 17, letterSpacing: 0.3 },
+  secondaryBtns: { flexDirection: 'row', gap: 10, width: '100%' },
+  ghostBtnWrap: { flex: 1 },
+  ghostBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 13, borderRadius: Radius.lg, backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: Colors.glassBorder, minHeight: 48 },
+  ghostBtnText: { color: Colors.textPrimary, fontFamily: 'Inter-SemiBold', fontSize: 14 },
 });
