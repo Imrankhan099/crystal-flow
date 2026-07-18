@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Crystal Flow",
+    "slug": "crystal-flow",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "crystalflow",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-router", "expo-font"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F2F6FF"
+      }
+    }
+  }
+}
