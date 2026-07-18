@@ -40,12 +40,24 @@ jobs:
       - name: Ensure icon assets exist
         run: |
           mkdir -p assets
-          for f in icon.png adaptive-icon.png favicon.png; do
-            if [ ! -f "assets/$f" ]; then
-              convert -size 1024x1024 xc:'#F2F6FF' "assets/$f"
-              echo "Created placeholder assets/$f"
-            fi
-          done
+          python3 - <<'PY'
+          import struct, zlib, os
+          def make_png(path, size=1024):
+              raw = b"\x00" + b"\xff\xf2\xf6\xff" * size
+              raw = raw * size
+              def chunk(typ, data):
+                c = typ + data
+                return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xffffffff)
+              sig = b"\x89PNG\r\n\x1a\n"
+              ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+              idat = zlib.compress(raw, 9)
+              with open(path, "wb") as f:
+                f.write(sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b""))
+          for f in ["icon.png", "adaptive-icon.png", "favicon.png"]:
+            if not os.path.exists(os.path.join("assets", f)):
+              make_png(os.path.join("assets", f))
+              print(f"Created placeholder assets/{f}")
+          PY
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
