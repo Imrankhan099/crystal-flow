@@ -16,10 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Set up Java 21
@@ -36,6 +36,16 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Ensure icon assets exist
+        run: |
+          mkdir -p assets
+          for f in icon.png adaptive-icon.png favicon.png; do
+            if [ ! -f "assets/$f" ]; then
+              convert -size 1024x1024 xc:'#F2F6FF' "assets/$f"
+              echo "Created placeholder assets/$f"
+            fi
+          done
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
