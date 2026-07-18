@@ -1,4 +1,4 @@
-name: Android Debug APK
+name: Android Release APK
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build Release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -37,39 +37,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Ensure icon assets exist
-        run: |
-          mkdir -p assets
-          python3 - <<'PY'
-          import struct, zlib, os
-          def make_png(path, size=1024):
-              raw = b"\x00" + b"\xff\xf2\xf6\xff" * size
-              raw = raw * size
-              def chunk(typ, data):
-                c = typ + data
-                return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xffffffff)
-              sig = b"\x89PNG\r\n\x1a\n"
-              ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
-              idat = zlib.compress(raw, 9)
-              with open(path, "wb") as f:
-                f.write(sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b""))
-          for f in ["icon.png", "adaptive-icon.png", "favicon.png"]:
-            if not os.path.exists(os.path.join("assets", f)):
-              make_png(os.path.join("assets", f))
-              print(f"Created placeholder assets/{f}")
-          PY
-
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        env:
+          EXPO_NO_TELEMETRY: '1'
+        run: ./gradlew assembleRelease
 
-      - name: Upload debug APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: app-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
